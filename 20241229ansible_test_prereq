@@ -1,0 +1,205 @@
+#!/bin/bash
+
+# Step 1: Create Deployment
+echo "Creating Deployment..."
+kubectl create deployment sshtest --image rastasheep/ubuntu-sshd:18.04 --replicas=2
+
+# Step 2: Expose Deployment
+echo "Exposing Deployment as ClusterIP Service..."
+kubectl expose deployment sshtest --name=sshtestt --type=ClusterIP --port=22 --target-port=22
+
+# Step 3: Update System Packages
+echo "Updating system packages..."
+sudo apt update
+
+# Step 4: Install Python and Pip
+echo "Installing Python3 and pip..."
+sudo apt install python3 python3-pip -y
+
+# Step 5: Install Python YAML Library
+echo "Installing pyyaml library..."
+pip3 install pyyaml
+
+# Step 6: Install Ansible
+echo "Installing Ansible..."
+sudo apt install -y ansible
+
+sudo apt install -y openjdk-11-jdk
+wget -q -O - https://pkg.jenkins.io/debian/jenkins.io.key | sudo apt-key add -
+sudo sh -c 'echo deb http://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list'
+sudo apt update
+sudo apt install -y jenkins
+
+echo "All steps completed successfully!"
+
+###################option jenkins configuration
+
+#!/bin/bash
+
+# 添加 Jenkins 存儲庫
+echo "Setting up Jenkins repository..."
+sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null <<EOF
+deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/
+EOF
+
+# 添加 GPG 密鑰
+echo "Adding Jenkins GPG key..."
+curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+
+# 驗證 GPG 密鑰是否成功添加
+echo "Verifying GPG key..."
+gpg --show-keys /usr/share/keyrings/jenkins-keyring.asc || { echo "GPG key verification failed"; exit 1; }
+
+# 更新系統包索引
+echo "Updating package index..."
+sudo apt clean
+sudo apt update
+sudo apt install openjdk-17-jdk -y
+
+
+# 安裝 Jenkins
+echo "Installing Jenkins..."
+sudo apt install jenkins -y
+
+# 啟動 Jenkins 並檢查狀態
+echo "Starting Jenkins..."
+sudo systemctl start jenkins
+sudo systemctl enable jenkins
+sudo systemctl status jenkins
+
+
+
+
+###################python3test
+import subprocess
+import json
+import os
+
+# Kubernetes Service Name
+service_name = "sshtestt"
+
+try:
+    # Get Service Details
+    service_output = subprocess.check_output(["kubectl", "get", "service", service_name, "-o", "json"])
+    service_info = json.loads(service_output)
+
+    # Extract Service Type
+    service_type = service_info["spec"].get("type", "ClusterIP")
+    print(f"Service Type: {service_type}")
+
+    # Check Service Type Compatibility
+    if service_type != "ClusterIP":
+        print(f"Warning: This script is optimized for ClusterIP. Current type: {service_type}")
+
+    # Extract ClusterIP
+    cluster_ip = service_info["spec"]["clusterIP"]
+
+    # Extract Port(s)
+    ports = service_info["spec"]["ports"]
+    ports_list = [port["port"] for port in ports]  # 取得所有 ClusterIP 對應的端口
+
+    # Print Service Details
+    print(f"Service ClusterIP: {cluster_ip}")
+    print(f"Service Ports: {', '.join(map(str, ports_list))}")
+
+    # Save Service Info to File
+    with open("service_info.txt", "w") as f:
+        f.write(f"Service Type: {service_type}\n")
+        f.write(f"Service ClusterIP: {cluster_ip}\n")
+        f.write(f"Service Ports: {', '.join(map(str, ports_list))}\n")
+
+    # Prepare SSH Known Hosts Command
+    all_ips = set()  # Store all IPs for `ssh-keyscan`
+
+    # Get Node Details
+    nodes_output = subprocess.check_output(["kubectl", "get", "nodes", "-o", "wide"])
+    node_inventory = "[nodes]\n"
+    print("\nNodes:")
+    for line in nodes_output.decode("utf-8").split("\n")[1:]:
+        if line.strip():
+            parts = line.split()
+            node_ip = parts[5]
+            all_ips.add(node_ip)
+            print(f"- Node IP: {node_ip}")
+            node_inventory += f"{node_ip} ansible_user=root ansible_ssh_port=22 ansible_ssh_pass=root\n"
+
+    # Get Pod Details
+    pods_output = subprocess.check_output(["kubectl", "get", "pods", "-o", "wide"])
+    pod_inventory = "[pods]\n"
+    print("\nPods:")
+    for line in pods_output.decode("utf-8").split("\n")[1:]:
+        if line.strip():
+            parts = line.split()
+            pod_name = parts[0]
+            pod_ip = parts[5]
+            all_ips.add(pod_ip)
+            print(f"- Pod Name: {pod_name}, Pod IP: {pod_ip}")
+            pod_inventory += f"{pod_ip} ansible_user=root ansible_ssh_port=22 ansible_ssh_pass=root\n"
+
+    # Combine Inventories
+    inventory = node_inventory + "\n" + pod_inventory
+
+    # Write Inventory to File
+    with open("inventory", "w") as f:
+        f.write(inventory)
+
+    # Perform SSH Key Scan
+    print("\nAdding SSH keys to known_hosts...")
+    for ip in all_ips:
+        try:
+            subprocess.run(["ssh-keyscan", "-p", "22", ip], stdout=open(os.path.expanduser("~/.ssh/known_hosts"), "a"))
+        except Exception as e:
+            print(f"Failed to add {ip} to known_hosts: {e}")
+
+    print("\nDynamic inventory created in 'inventory' file.")
+    print("Service details saved in 'service_info.txt'.")
+    print("SSH keys added to '~/.ssh/known_hosts'.")
+
+except subprocess.CalledProcessError as e:
+    print(f"Error executing kubectl command: {e}")
+except KeyError as e:
+    print(f"KeyError: {e}")
+except Exception as e:
+    print(f"Unexpected error: {e}")
+
+
+
+####################python3 for nodeport_ansibletest
+
+ansible all -i inventory -m ping
+
+ansible all -i inventory -m shell -a "df -h"
+
+test1
+
+$ vi hello_world.yml
+---
+
+- name: say 'hello world'
+  hosts: all
+  tasks:
+
+    - name: echo 'hello world'
+      command: echo 'hello world'
+      register: result
+
+    - name: print stdout
+      debug:
+        msg: "{{ result.stdout }}"
+		
+		
+		
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
