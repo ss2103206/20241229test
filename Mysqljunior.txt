@@ -1,0 +1,43 @@
+--#MySql <需替換字元>
+--#先選擇資料庫 列出當前資料庫的所有表
+USE <your_database_name>;
+SHOW TABLES;
+
+--#查詢表的結構
+DESC <your_table_name>;
+
+--#顯示 CREATE TABLE 的完整語法，包括索引、外鍵等資訊
+--#\G 將資訊分行
+SHOW CREATE TABLE <your_table_name>\G;
+
+--#一次列出整個資料庫的所有表的索引
+SELECT table_name, index_name, column_name, index_type, non_unique
+FROM information_schema.statistics
+WHERE table_schema = '<your_database_name>'
+ORDER BY table_name, index_name;
+
+--#資料表的大小（資料+索引）
+SELECT table_name, 
+       ROUND((data_length + index_length) / 1024 / 1024, 2) AS table_size_MB
+FROM information_schema.tables
+WHERE table_schema = '<your_database_name>'
+ORDER BY table_size_MB DESC;
+
+--#查看所有表的欄位
+SELECT table_name, column_name, data_type, column_type, is_nullable, column_default
+FROM information_schema.columns
+WHERE table_schema = '<your_database_name>'
+ORDER BY table_name, ordinal_position;
+
+--#查看外建關係
+SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+FROM information_schema.KEY_COLUMN_USAGE
+WHERE TABLE_SCHEMA = '<your_database_name>' AND REFERENCED_TABLE_NAME IS NOT NULL;
+
+--#資料庫的連線數
+SHOW PROCESSLIST;
+
+--#查看當前資料庫有多少連線
+SHOW STATUS LIKE 'Threads_connected';
+
+
